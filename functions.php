@@ -34,6 +34,192 @@ class MetaBox
 
         $this->addBox();
     }
+    
+// OBJECT HELPERS
+
+    // Method used to extend the options array with user
+    // defined parameters.
+    private function extend( $map ){
+    
+        // Exit if parameter is a string or nonexistent
+        if( is_string( $map ) || !$map )
+            return false;
+    
+        // Overrite the default options
+        foreach( $map as $key => $val )
+            $this->opts[$key] = $val;
+            
+        return true;
+    }
+
+
+    // Validate metabox info and add to array
+    private function addBox(){
+        $this->valid('id');
+        $this->unique('id');
+    
+        $this->box = $this->opts['id'];
+    
+        self::$boxs[$this->box] = $this->opts;
+    }
+    
+    // Validate field info and add to array
+    private function addField(){
+        $this->valid('id');
+        $this->unique('id');
+        $this->valid('name');
+        $this->unique('name');
+        
+        self::$boxs[$this->box]['fields'][] = $this->opts;
+    }
+    
+    // Validate slug and alert user if correction needs to be made
+    private function valid( $param ){
+        $value = $this->opts[$param];
+    
+        $slug = self::slug( $value );
+        if( $value != $slug )
+            die( "'{$value}' contains illegal characters.<br>\nTry '{$slug}' instead." );
+    }
+    
+    // Validate the uniqueness of a name and alert user if a correction needs to be made
+    private function unique( $param ){
+        eval('$list = self::$'.$param.'s;');
+    
+        $value = $this->opts[$param];
+                
+        foreach( $list as $entry )
+            if( $value == $entry ) die( "The ID '{$value}' already exists." );
+        
+        eval('self::$'.$param.'s[] = $value;');
+    }
+    
+// CLASS HELPER FUNCTIONS
+
+    // Creates a valid slug
+    private static function slug( $string ){
+        return strtolower( preg_replace( '/[^A-Za-z0-9-]+/', '-', $string ) );
+    }
+    
+// CLASS METHODS
+
+    // Jump starts the MetaBox class by adding appropriate actions
+    public static function init(){
+        foreach( self::$boxs as $id => $box ){
+            add_meta_box($box['id'], $box['title'], 'MetaBox::display', $box['type'], $box['location'], $box['priority'], $box['location']);
+        }
+        add_action('save_post', 'MetaBox::save');
+        
+        add_action('admin_head', 'MetaBox::loadScripts');
+    }
+    
+    // Method called by Wordpress to display the corresponding metabox
+    public static function display( $post = false, $box = false ){
+    
+        $id = $box['id'];
+        $location = $box['args'];
+        $fields = self::$boxs[$id]['fields'];
+        
+        $nonce = wp_create_nonce( basename(__FILE__) );
+        
+        echo "<input type='hidden' name='{$id}_nonce' value='{$nonce}' />";
+        echo "<table class='form-table'>";
+        
+        $meta = get_post_meta( $post->ID, self::$meta_name, true );
+    
+        foreach( $fields as $field ){
+        
+            $value = $meta[ $field['name'] ];
+            $call_show_func = 'self::show'.$field['type'];
+            
+            echo "<tr><th style='padding:10px 0 2px'><label for='{$field['id']}'>{$field['title']}</label><div style='padding: 4px 0 0 8px;font-size:10px'>{$field['desc']}</div></th></tr><tr><td style='padding:0'>";
+            call_user_func( $call_show_func, $field, $value );
+            echo "</td></tr>";
+        }
+        
+        echo "</table>";
+    }
+    
+    // Method called by Wordpress upon post save
+    public static function save( $post_id = false, $post = false ){
+    
+        // check autosave
+        if( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE )
+            return $post_id;
+            
+        // check permissions
+        /* ADD CODE HERE */
+
+        $meta = get_post_meta( $post_id, self::$meta_name, true );
+
+        foreach( self::$boxs as $id => $box ){
+            if( $_POST['post_type'] == $box['type'] ) {
+     
+                foreach( $box['fields'] as $field ){
+                    $name = $field['name'];
+                
+                    $old = $meta[$name];
+                    $new = $_POST[$name];
+                    
+                    if( $new && $new != $old )
+                        $meta[$name] = $new;
+                }
+            }
+        }
+        
+        update_post_meta( $post_id, self::$meta_name, $meta );
+
+        return $post_id;
+    }
+    
+    public static function loadScripts(){
+    ?>
+    <script>
+        (function($){
+            $(function(){
+                
+                $sortable = $('#sortable');
+                
+                $('input.metabox-upload').click( function(){
+                
+                    var id = $(this).data('target');
+                    
+                    tb_show('', 'media-upload.php?type=image&amp;TB_iframe=1');
+
+                    window.send_to_editor = function(html){
+                        var $img = $('img', html),
+                            url = $img.attr('src'),
+                            $clone = $sortable.find('li').first().clone();
+                            
+                        $clone.find('img').attr({src: url});
+                        $sortable.append( $clone );
+                        $clone.find('input').val( url );
+                            
+                        $(id).val(url);
+                        tb_remove();
+                    };
+                });
+                
+                $sortable.sortable({
+                    placeholder: 'ui-state-highlight',
+                    forcePlaceholderSize: true
+                });
+            });
+        })(jQuery);
+    </script>
+    <style>
+        #sortable li {width:100px;float:left;background:#ddd;padding:2px;margin:5px 5px;border:3px solid #ddd}
+        #sortable img {width:100%;height:auto}
+        .metabox-image-url {width:100px;border:none;margin:0}
+        .fix {height:1px;clear:both}
+    </style>
+    <?php
+    }
+
+//
+// ADD SUPPORTED FIELDS HERE
+//
+// ----------------------------
 
 // TEXT FIELD
     
@@ -226,190 +412,11 @@ class MetaBox
         }
         echo "</select>";
     }
-    
-// OBJECT HELPERS
-
-    // Method used to extend the options array with user
-    // defined parameters.
-    private function extend( $map ){
-    
-        // Exit if parameter is a string or nonexistent
-        if( is_string( $map ) || !$map )
-            return false;
-    
-        // Overrite the default options
-        foreach( $map as $key => $val )
-            $this->opts[$key] = $val;
-            
-        return true;
-    }
-
-
-    // Validate metabox info and add to array
-    private function addBox(){
-        $this->valid('id');
-        $this->unique('id');
-    
-        $this->box = $this->opts['id'];
-    
-        self::$boxs[$this->box] = $this->opts;
-    }
-    
-    // Validate field info and add to array
-    private function addField(){
-        $this->valid('id');
-        $this->unique('id');
-        $this->valid('name');
-        $this->unique('name');
-        
-        self::$boxs[$this->box]['fields'][] = $this->opts;
-    }
-    
-    // Validate slug and alert user if correction needs to be made
-    private function valid( $param ){
-        $value = $this->opts[$param];
-    
-        $slug = self::slug( $value );
-        if( $value != $slug )
-            die( "'{$value}' contains illegal characters.<br>\nTry '{$slug}' instead." );
-    }
-    
-    // Validate the uniqueness of a name and alert user if a correction needs to be made
-    private function unique( $param ){
-        eval('$list = self::$'.$param.'s;');
-    
-        $value = $this->opts[$param];
-                
-        foreach( $list as $entry )
-            if( $value == $entry ) die( "The ID '{$value}' already exists." );
-        
-        eval('self::$'.$param.'s[] = $value;');
-    }
-    
-// CLASS HELPER FUNCTIONS
-
-    // Creates a valid slug
-    private static function slug( $string ){
-        return strtolower( preg_replace( '/[^A-Za-z0-9-]+/', '-', $string ) );
-    }
-    
-// CLASS METHODS
-
-    // Jump starts the MetaBox class by adding appropriate actions
-    public static function init(){
-        foreach( self::$boxs as $id => $box ){
-            add_meta_box($box['id'], $box['title'], 'MetaBox::display', $box['type'], $box['location'], $box['priority'], $box['location']);
-        }
-        add_action('save_post', 'MetaBox::save');
-        
-        add_action('admin_head', 'MetaBox::loadScripts');
-    }
-    
-    // Method called by Wordpress to display the corresponding metabox
-    public static function display( $post = false, $box = false ){
-    
-        $id = $box['id'];
-        $location = $box['args'];
-        $fields = self::$boxs[$id]['fields'];
-        
-        $nonce = wp_create_nonce( basename(__FILE__) );
-        
-        echo "<input type='hidden' name='{$id}_nonce' value='{$nonce}' />";
-        echo "<table class='form-table'>";
-        
-        $meta = get_post_meta( $post->ID, self::$meta_name, true );
-    
-        foreach( $fields as $field ){
-        
-            $value = $meta[ $field['name'] ];
-            $call_show_func = 'self::show'.$field['type'];
-            
-            echo "<tr><th style='padding:10px 0 2px'><label for='{$field['id']}'>{$field['title']}</label><div style='padding: 4px 0 0 8px;font-size:10px'>{$field['desc']}</div></th></tr><tr><td style='padding:0'>";
-            call_user_func( $call_show_func, $field, $value );
-            echo "</td></tr>";
-        }
-        
-        echo "</table>";
-    }
-    
-    // Method called by Wordpress upon post save
-    public static function save( $post_id = false, $post = false ){
-    
-        // check autosave
-        if( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE )
-            return $post_id;
-            
-        // check permissions
-        /* ADD CODE HERE */
-
-        $meta = get_post_meta( $post_id, self::$meta_name, true );
-
-        foreach( self::$boxs as $id => $box ){
-            if( $_POST['post_type'] == $box['type'] ) {
      
-                foreach( $box['fields'] as $field ){
-                    $name = $field['name'];
-                
-                    $old = $meta[$name];
-                    $new = $_POST[$name];
-                    
-                    if( $new && $new != $old )
-                        $meta[$name] = $new;
-                }
-            }
-        }
-        
-        update_post_meta( $post_id, self::$meta_name, $meta );
-
-        return $post_id;
-    }
-    
-    public static function loadScripts(){
-    ?>
-    <script>
-        (function($){
-            $(function(){
-                
-                $sortable = $('#sortable');
-                
-                $('input.metabox-upload').click( function(){
-                
-                    var id = $(this).data('target');
-                    
-                    tb_show('', 'media-upload.php?type=image&amp;TB_iframe=1');
-
-                    window.send_to_editor = function(html){
-                        var $img = $('img', html),
-                            url = $img.attr('src'),
-                            $clone = $sortable.find('li').first().clone();
-                            
-                        $clone.find('img').attr({src: url});
-                        $sortable.append( $clone );
-                        $clone.find('input').val( url );
-                            
-                        $(id).val(url);
-                        tb_remove();
-                    };
-                });
-                
-                $sortable.sortable({
-                    placeholder: 'ui-state-highlight',
-                    forcePlaceholderSize: true
-                });
-            });
-        })(jQuery);
-    </script>
-    <style>
-        #sortable li {width:100px;float:left;background:#ddd;padding:2px;margin:5px 5px;border:3px solid #ddd}
-        #sortable img {width:100%;height:auto}
-        .metabox-image-url {width:100px;border:none;margin:0}
-        .fix {height:1px;clear:both}
-    </style>
-    <?php
-    }
 }
 add_action('admin_menu', 'MetaBox::init');
 
+/*
 $meep = new MetaBox('Test Box', 'page', 'advanced');
 $meep->text('My Text');
 $meep->editor('My Editor');
@@ -418,4 +425,5 @@ $meep->radio('My Radio', array( 'test' => 'test', 'blah' => 'blah' ) );
 $meep->checkbox('My Checkbox');
 $meep->select('My Select', array( 'ford', 'toyota', 'chevy' ) );
 $meep->upload('My Upload');
+*/
 ?>
