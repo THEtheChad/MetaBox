@@ -174,7 +174,7 @@ class MetaBox
     
     public static function loadScripts(){
     ?>
-    <script>
+    <script type='text/javascript'>
         (function($){
             $(function(){
                 
