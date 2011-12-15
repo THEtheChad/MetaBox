@@ -1,16 +1,23 @@
 <?php
 class MetaBox
 {
+    // Stores all metabox info
     private static $boxs = array();
     
+    // List of unique names and ids
     private static $ids = array();
     private static $names = array();
     
+    // Used to retrieve all stored metainformation
     private static $meta_name = 'MetaBox';
     
-    private $box; // The meta box ID
+    // The ID of the metabox attached to this instance of the class
+    private $box;
 
-    private $opts; // Temporary options storage
+    // Temporary option storage. Associative array.
+    // All instanced helper methods access this variable.
+    private $opts;
+
 
     function __construct( $id, $type = 'page', $location = 'side', $priority = 'high' ){
     
@@ -222,16 +229,23 @@ class MetaBox
     
 // OBJECT HELPERS
 
+    // Method used to extend the options array with user
+    // defined parameters.
     private function extend( $map ){
-        if( is_string( $map ) )
+    
+        // Exit if parameter is a string or nonexistent
+        if( is_string( $map ) || !$map )
             return false;
     
+        // Overrite the default options
         foreach( $map as $key => $val )
             $this->opts[$key] = $val;
             
         return true;
     }
 
+
+    // Validate metabox info and add to array
     private function addBox(){
         $this->valid('id');
         $this->unique('id');
@@ -241,6 +255,7 @@ class MetaBox
         self::$boxs[$this->box] = $this->opts;
     }
     
+    // Validate field info and add to array
     private function addField(){
         $this->valid('id');
         $this->unique('id');
@@ -250,6 +265,7 @@ class MetaBox
         self::$boxs[$this->box]['fields'][] = $this->opts;
     }
     
+    // Validate slug and alert user if correction needs to be made
     private function valid( $param ){
         $value = $this->opts[$param];
     
@@ -258,6 +274,7 @@ class MetaBox
             die( "'{$value}' contains illegal characters.<br>\nTry '{$slug}' instead." );
     }
     
+    // Validate the uniqueness of a name and alert user if a correction needs to be made
     private function unique( $param ){
         eval('$list = self::$'.$param.'s;');
     
@@ -270,13 +287,15 @@ class MetaBox
     }
     
 // CLASS HELPER FUNCTIONS
-     
+
+    // Creates a valid slug
     private static function slug( $string ){
         return strtolower( preg_replace( '/[^A-Za-z0-9-]+/', '-', $string ) );
     }
     
 // CLASS METHODS
 
+    // Jump starts the MetaBox class by adding appropriate actions
     public static function init(){
         foreach( self::$boxs as $id => $box ){
             add_meta_box($box['id'], $box['title'], 'MetaBox::display', $box['type'], $box['location'], $box['priority'], $box['location']);
@@ -286,6 +305,7 @@ class MetaBox
         add_action('admin_head', 'MetaBox::loadScripts');
     }
     
+    // Method called by Wordpress to display the corresponding metabox
     public static function display( $post = false, $box = false ){
     
         $id = $box['id'];
@@ -312,6 +332,7 @@ class MetaBox
         echo "</table>";
     }
     
+    // Method called by Wordpress upon post save
     public static function save( $post_id = false, $post = false ){
     
         // check autosave
